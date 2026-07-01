@@ -1,51 +1,78 @@
 <?php
 // ============================================
-// PRO MAILER - Single File Email Sender
+// PRO MAILER - Complete Email Sender
 // ============================================
 
-// Load Composer
-require_once __DIR__ . '/vendor/autoload.php';
-
-use Leaf\Mail;
+// Enable error reporting for debugging
+error_reporting(E_ALL);
+ini_set('display_errors', 1);
+ini_set('display_startup_errors', 1);
 
 // ============================================
 // SMTP CONFIGURATION - EDIT THESE!
 // ============================================
 $smtpConfig = [
-    'host' => 'smtp.gmail.com',        // Your SMTP host
-    'port' => 587,                      // 587 for TLS, 465 for SSL
-    'security' => 'tls',               // 'tls' or 'ssl'
+    'host' => 'smtp.gmail.com',              // Your SMTP host
+    'port' => 587,                           // 587 for TLS, 465 for SSL
+    'security' => 'tls',                     // 'tls' or 'ssl'
     'auth' => [
-        'username' => 'your-email@gmail.com',  // CHANGE THIS
-        'password' => 'your-app-password'      // CHANGE THIS
+        'username' => 'your-email@gmail.com', // CHANGE THIS
+        'password' => 'your-app-password'     // CHANGE THIS
     ]
 ];
+
+// ============================================
+// LOAD COMPOSER
+// ============================================
+$autoloadPath = __DIR__ . '/vendor/autoload.php';
+
+if (!file_exists($autoloadPath)) {
+    die('❌ Error: vendor/autoload.php not found. Run: composer require leafs/mail');
+}
+
+require_once $autoloadPath;
+
+use Leaf\Mail;
 
 // ============================================
 // PROCESS FORM SUBMISSION
 // ============================================
 $response = null;
 $success = false;
+$formData = ['to' => '', 'name' => '', 'subject' => '', 'message' => ''];
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $to = $_POST['to'] ?? '';
-    $name = $_POST['name'] ?? 'Customer';
-    $subject = $_POST['subject'] ?? '';
-    $message = $_POST['message'] ?? '';
+    // Get form data
+    $formData['to'] = trim($_POST['to'] ?? '');
+    $formData['name'] = trim($_POST['name'] ?? 'Customer');
+    $formData['subject'] = trim($_POST['subject'] ?? '');
+    $formData['message'] = trim($_POST['message'] ?? '');
     $template = $_POST['template'] ?? 'custom';
 
     // Validate
-    if (empty($to) || empty($subject) || empty($message)) {
-        $response = 'Please fill in all required fields.';
-    } elseif (!filter_var($to, FILTER_VALIDATE_EMAIL)) {
-        $response = 'Please enter a valid email address.';
-    } else {
+    $errors = [];
+
+    if (empty($formData['to'])) {
+        $errors[] = 'Recipient email is required.';
+    } elseif (!filter_var($formData['to'], FILTER_VALIDATE_EMAIL)) {
+        $errors[] = 'Please enter a valid email address.';
+    }
+
+    if (empty($formData['subject'])) {
+        $errors[] = 'Subject is required.';
+    }
+
+    if (empty($formData['message'])) {
+        $errors[] = 'Message is required.';
+    }
+
+    if (empty($errors)) {
         try {
             // Connect to SMTP
             Mail::connect($smtpConfig);
 
             // Replace template variables
-            $message = str_replace('{{name}}', $name, $message);
+            $message = str_replace('{{name}}', $formData['name'], $formData['message']);
 
             // Build HTML email
             $html = "
@@ -57,6 +84,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     .container { max-width: 600px; margin: 0 auto; padding: 20px; }
                     .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; border-radius: 10px 10px 0 0; text-align: center; }
                     .header h1 { margin: 0; font-size: 24px; }
+                    .header p { margin: 5px 0 0; opacity: 0.9; }
                     .body { background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; border: 1px solid #e0e0e0; border-top: none; }
                     .body p { line-height: 1.6; }
                     .footer { text-align: center; font-size: 12px; color: #aaa; margin-top: 20px; padding: 10px; }
@@ -68,10 +96,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 <div class='container'>
                     <div class='header'>
                         <h1>📧 Pro Mailer</h1>
-                        <p style='margin: 5px 0 0; opacity: 0.9;'>Professional Email Service</p>
+                        <p>Professional Email Service</p>
                     </div>
                     <div class='body'>
-                        <p><strong>Dear " . htmlspecialchars($name) . ",</strong></p>
+                        <p><strong>Dear " . htmlspecialchars($formData['name']) . ",</strong></p>
                         <p>" . nl2br(htmlspecialchars($message)) . "</p>
                         <hr>
                         <p style='font-size: 13px; color: #666;'>This email was sent using Pro Mailer.</p>
@@ -86,18 +114,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             // Send email
             Mail::send([
-                'to' => $to,
-                'subject' => $subject,
+                'to' => $formData['to'],
+                'subject' => $formData['subject'],
                 'html' => $html,
                 'text' => $message
             ]);
 
-            $response = "✅ Email sent successfully to <strong>" . htmlspecialchars($to) . "</strong>";
+            $response = "✅ Email sent successfully to <strong>" . htmlspecialchars($formData['to']) . "</strong>";
             $success = true;
+            
+            // Clear form data after successful send
+            $formData = ['to' => '', 'name' => '', 'subject' => '', 'message' => ''];
 
         } catch (Exception $e) {
             $response = "❌ SMTP Error: " . htmlspecialchars($e->getMessage());
         }
+    } else {
+        $response = "❌ " . implode('<br>', $errors);
     }
 }
 ?>
@@ -299,7 +332,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             0%, 100% { opacity: 1; }
             50% { opacity: 0.3; }
         }
-
         <?php if ($success): ?>
         .container { border: 3px solid #2ecc71; }
         <?php elseif ($response && !$success): ?>
@@ -324,17 +356,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <form method="POST" id="emailForm">
             <div class="form-group">
                 <label for="to">Recipient Email <span class="required">*</span></label>
-                <input type="email" id="to" name="to" placeholder="customer@example.com" value="<?php echo $_POST['to'] ?? ''; ?>" required>
+                <input type="email" id="to" name="to" placeholder="customer@example.com" value="<?php echo htmlspecialchars($formData['to']); ?>" required>
             </div>
 
             <div class="form-group">
                 <label for="name">Recipient Name</label>
-                <input type="text" id="name" name="name" placeholder="John Doe" value="<?php echo $_POST['name'] ?? ''; ?>">
+                <input type="text" id="name" name="name" placeholder="John Doe" value="<?php echo htmlspecialchars($formData['name']); ?>">
             </div>
 
             <div class="form-group">
                 <label for="subject">Subject <span class="required">*</span></label>
-                <input type="text" id="subject" name="subject" placeholder="Your Invoice #12345" value="<?php echo $_POST['subject'] ?? ''; ?>" required>
+                <input type="text" id="subject" name="subject" placeholder="Your Invoice #12345" value="<?php echo htmlspecialchars($formData['subject']); ?>" required>
             </div>
 
             <div class="form-group">
@@ -349,7 +381,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             <div class="form-group">
                 <label for="message">Message <span class="required">*</span></label>
-                <textarea id="message" name="message" placeholder="Your message here..." required><?php echo $_POST['message'] ?? "Dear Customer,\n\nThank you for your business. Your invoice #12345 is attached.\n\nBest regards,\nYour Company"; ?></textarea>
+                <textarea id="message" name="message" placeholder="Your message here..." required><?php echo htmlspecialchars($formData['message'] ?: "Dear Customer,\n\nThank you for your business. Your invoice #12345 is attached.\n\nBest regards,\nYour Company"); ?></textarea>
             </div>
 
             <input type="hidden" name="template" id="templateInput" value="custom">
@@ -376,20 +408,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 document.querySelectorAll('.template-btn').forEach(b => b.classList.remove('active'));
                 this.classList.add('active');
 
-                const subject = this.dataset.subject;
-                const msg = this.dataset.msg;
+                const subject = this.dataset.subject || '';
+                const msg = this.dataset.msg || '';
 
                 document.getElementById('subject').value = subject;
                 document.getElementById('message').value = msg;
-
-                // Set template value
-                const templateMap = {
-                    '📄 Invoice': 'invoice',
-                    '👋 Welcome': 'welcome',
-                    '📰 Newsletter': 'newsletter',
-                    '✏️ Custom': 'custom'
-                };
-                document.getElementById('templateInput').value = templateMap[this.textContent.trim()] || 'custom';
             });
         });
 
@@ -402,12 +425,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             spinner.classList.add('active');
         });
 
-        // Auto-hide alert after 5 seconds
+        // Auto-hide alert after 8 seconds
         setTimeout(() => {
             const alert = document.querySelector('.alert');
             if (alert) {
                 setTimeout(() => {
-                    alert.style.display = 'none';
+                    alert.style.opacity = '0';
+                    setTimeout(() => {
+                        alert.style.display = 'none';
+                    }, 500);
                 }, 5000);
             }
         }, 1000);
